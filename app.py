@@ -142,7 +142,7 @@ def call_claude(prompt: str, system: str = "", json_mode: bool = False) -> str:
         "You are Bookiee AI, a sharp and friendly study assistant."
     )
     msg = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-opus-4-7",
         max_tokens=1500,
         system=sys_prompt,
         messages=[{"role": "user", "content": prompt}],
@@ -231,7 +231,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<small style='color:#484f57'>Prototype· "
+        "<small style='color:#484f57'>Bookiee-Prototype · "
         "[Source on GitHub](https://github.com) · "
         "[Deploy on Streamlit](https://streamlit.io)</small>",
         unsafe_allow_html=True,
@@ -243,8 +243,8 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <div class="bk-header">
-  <h1>📚 Bookiee AI</h1>
-  <p>Upload → Analyze → Study smarter. Powered by Claude.</p>
+  <h1>📚 Bookiee AI - Prototype</h1>
+  <p>Upload → Analyze → Study smarter. Powered by CelesTium-AI.</p>
 </div>
 """, unsafe_allow_html=True)
 
