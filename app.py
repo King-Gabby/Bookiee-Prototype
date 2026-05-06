@@ -6,7 +6,7 @@ import io
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Bookiee AI",
+    page_title="Bookiee AI - Prototype",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -231,7 +231,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<small style='color:#484f57'>Built with Claude · "
+        "<small style='color:#484f57'>Prototype· "
         "[Source on GitHub](https://github.com) · "
         "[Deploy on Streamlit](https://streamlit.io)</small>",
         unsafe_allow_html=True,
