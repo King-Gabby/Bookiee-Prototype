@@ -1,10 +1,10 @@
 # 📚 Bookiee AI - Prototype
 
-> An AI-powered study tool that helps you understand, summarize, and study any document — built with Python, Streamlit and API.
+> An AI-powered study tool that helps you understand, summarize, and study any document; built with Python, Streamlit and API.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat&logo=python&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.35+-FF4B4B?style=flat&logo=streamlit&logoColor=white)
-![Claude](https://img.shields.io/badge/Powered%20by-Claude%20AI-2ea043?style=flat)
+![Claude](https://img.shields.io/badge/Powered%20by-CelesTiumAI%20AI-2ea043?style=flat)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat)
 
 ---
@@ -17,11 +17,11 @@
 | 💬 **Ask Questions** | Chat with your document — ask anything, get context-aware answers |
 | 🧠 **Study Mode** | Generate quizzes, interactive flashcards, or a simplified explanation |
 
-**Supports:** `.pdf`, `.txt`, `.md` files — or paste text directly.
+**Supports:** `.pdf`, `.txt`, `.md` files, or paste text directly.
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Clone the repo
 ```bash
@@ -75,7 +75,7 @@ Bookiee-Prototype/
 
 ## 🧠 How It Works
 
-All features use the same core pattern: extract text from the document, then send it to Claude with a purpose-built prompt.
+All features use the same core pattern: extract text from the document, then send it to Claude or your Model with a purpose-built prompt.
 
 ```
 User uploads file / pastes text
