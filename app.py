@@ -1,8 +1,9 @@
 import streamlit as st
-import anthropic
+from google import genai
 import json
 import pdfplumber
 import io
+import os
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -122,42 +123,72 @@ div[data-baseweb="tab-list"] button { font-family: 'DM Sans', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
+# I am temporarily using Gemini API for the sake of prototype.
 
-# ── Anthropic client ───────────────────────────────────────────────────────────
+# ── Gemini client ───────────────────────────────────────────────────────────
 def get_client():
-    """Return Anthropic client using key from Streamlit secrets."""
-    api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
-        st.error("⚠️  Add your Anthropic API key in **Settings → Secrets** as `ANTHROPIC_API_KEY`.")
+        st.error("⚠️ Add GEMINI_API_KEY in Settings → Secrets.")
         st.stop()
-    return anthropic.Anthropic(api_key=api_key)
+    return genai.Client(api_key=api_key)
 
 
-def call_claude(prompt: str, system: str = "", json_mode: bool = False) -> str:
-    """Single wrapper for all Claude calls."""
+def call_gemini(prompt: str, system: str = "", json_mode: bool = False) -> str:
+    """Single wrapper for all Gemini calls (Claude-style parity)."""
+
     client = get_client()
+
     sys_prompt = system or (
         "Return ONLY valid JSON, no markdown fences, no explanation."
         if json_mode else
         "You are Bookiee AI, a sharp and friendly study assistant."
     )
-    msg = client.messages.create(
-        model="claude-opus-4-7",
-        max_tokens=1500,
-        system=sys_prompt,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return msg.content[0].text
 
+ 
+    full_prompt = f"{sys_prompt}\n\n{prompt}"
 
-def call_claude_json(prompt: str):
-    """Call Claude and parse JSON response."""
-    raw = call_claude(prompt, json_mode=True)
     try:
-        return json.loads(raw.replace("```json", "").replace("```", "").strip())
+        response = client.models.generate_content(
+            model="gemini-3-flash-preview",
+            contents=full_prompt
+        )
+
+        # Gemini can return multiple parts , gotta handle safely
+        if hasattr(response, "text") and response.text:
+            return response.text.strip()
+
+        return "".join(
+            part.text for part in response.candidates[0].content.parts
+            if hasattr(part, "text")
+        ).strip()
+
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def call_gemini_json(prompt: str):
+    """Call Gemini and parse JSON response (Claude-style)."""
+    raw = call_gemini(prompt, json_mode=True)
+
+    try:
+        cleaned = (
+            raw.replace("```json", "")
+               .replace("```", "")
+               .strip()
+        )
+
+        # Gemini sometimes adds text before/after JSON
+        start = cleaned.find("{")
+        end = cleaned.rfind("}") + 1
+
+        if start != -1 and end != -1:
+            cleaned = cleaned[start:end]
+
+        return json.loads(cleaned)
+
     except json.JSONDecodeError:
         return None
-
 
 # ── PDF / text extraction ──────────────────────────────────────────────────────
 def extract_text(uploaded_file) -> str:
@@ -263,11 +294,11 @@ with tab_analyze:
     else:
         if st.button("✨ Analyze Document", use_container_width=True):
             with st.spinner("Running analysis — fetching summary, key points & concepts…"):
-                summary    = call_claude(f"Summarize this text in 3-4 clear paragraphs:\n\n{ctx}")
-                key_points = call_claude_json(
+                summary    = call_gemini(f"Summarize this text in 3-4 clear paragraphs:\n\n{ctx}")
+                key_points = call_gemini_json(
                     f"Extract exactly 6 key ideas. Return a JSON array of strings (≤15 words each):\n\n{ctx}"
                 )
-                concepts   = call_claude_json(
+                concepts   = call_gemini_json(
                     f"Identify 4-5 key concepts. Return JSON array of {{term, definition}} objects:\n\n{ctx}"
                 )
                 st.session_state.analysis = {
@@ -340,7 +371,7 @@ with tab_chat:
         if user_input:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             with st.spinner("Thinking…"):
-                answer = call_claude(
+                answer = call_gemini(
                     f"Answer this question based only on the context below.\n\n"
                     f"Context:\n{ctx}\n\nQuestion: {user_input}"
                 )
@@ -369,7 +400,7 @@ with tab_study:
         if st.button("🚀 Generate", use_container_width=True):
             if mode == "📝 Quiz":
                 with st.spinner("Building your quiz…"):
-                    data = call_claude_json(
+                    data = call_gemini_json(
                         f"Create 5 multiple-choice questions. Return JSON array of "
                         f"{{question, options: [A.x, B.x, C.x, D.x], answer: letter, explanation}} objects:\n\n{ctx}"
                     )
@@ -378,7 +409,7 @@ with tab_study:
 
             elif mode == "🃏 Flashcards":
                 with st.spinner("Creating flashcards…"):
-                    data = call_claude_json(
+                    data = call_gemini_json(
                         f"Create 8 flashcards. Return JSON array of {{front, back}} objects:\n\n{ctx}"
                     )
                     st.session_state.fc_data    = data or []
@@ -386,7 +417,7 @@ with tab_study:
 
             else:
                 with st.spinner("Simplifying…"):
-                    st.session_state.simplify_text = call_claude(
+                    st.session_state.simplify_text = call_gemini(
                         f"Explain this for a complete beginner. Use plain language, "
                         f"analogies, and examples. Be warm and clear:\n\n{ctx}"
                     )

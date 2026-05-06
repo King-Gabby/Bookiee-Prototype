@@ -86,7 +86,7 @@ Stored in Streamlit session state
         ↓
 User action → prompt built with context
         ↓
-Claude API call → structured response
+Gemini API call → structured response
         ↓
 Rendered in the UI
 ```
