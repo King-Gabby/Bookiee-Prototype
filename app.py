@@ -3,7 +3,6 @@ from google import genai
 import json
 import pdfplumber
 import io
-import os
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -127,7 +126,7 @@ div[data-baseweb="tab-list"] button { font-family: 'DM Sans', sans-serif; }
 
 # ── Gemini client ───────────────────────────────────────────────────────────
 def get_client():
-    api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
+    api_key = st.secrets.get("GEMINI_API_KEY", "")
     if not api_key:
         st.error("⚠️ Add GEMINI_API_KEY in Settings → Secrets.")
         st.stop()
