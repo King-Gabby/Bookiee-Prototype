@@ -1,5 +1,3 @@
 streamlit>=1.35.0
+google-genai>=1.0.0
 pdfplumber>=0.11.0
-google-genai #changed from ANthropic due to token costs
-
-
