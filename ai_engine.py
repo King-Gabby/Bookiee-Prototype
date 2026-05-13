@@ -416,3 +416,305 @@ def render_diagnostics() -> None:
         for e in reversed(log[-5:]):
             icon = "" if e["ok"] else ""
             st.caption(f"{icon} {e['time']} | {e['feature']} | {e['ms']}ms")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  COVERAGE MODES + ADAPTIVE LIMITS
+# ══════════════════════════════════════════════════════════════════════════════
+
+COVERAGE_MODES = {
+    "Light": {
+        "questions":      8,
+        "flashcards":     10,
+        "q_per_section":  3,
+        "fc_per_section": 4,
+        "label":          "8 questions · 10 cards",
+        "time_est":       "~30–60s",
+        "quota":          "low",
+        "quota_color":    "#3fb950",
+    },
+    "Standard": {
+        "questions":      15,
+        "flashcards":     20,
+        "q_per_section":  4,
+        "fc_per_section": 5,
+        "label":          "15 questions · 20 cards",
+        "time_est":       "~1–2 min",
+        "quota":          "medium",
+        "quota_color":    "#d97706",
+    },
+    "Deep": {
+        "questions":      30,
+        "flashcards":     40,
+        "q_per_section":  5,
+        "fc_per_section": 7,
+        "label":          "30 questions · 40 cards",
+        "time_est":       "~3–5 min",
+        "quota":          "high",
+        "quota_color":    "#f87171",
+    },
+    "Full Document": {
+        "questions":      None,   # adaptive: q_per_section × all sections
+        "flashcards":     None,
+        "q_per_section":  5,
+        "fc_per_section": 8,
+        "label":          "All sections covered",
+        "time_est":       "~5–10 min",
+        "quota":          "very high",
+        "quota_color":    "#f85149",
+    },
+}
+
+
+def available_modes(doc_text: str) -> list:
+    """
+    Return coverage modes appropriate for this document's word count.
+    Prevents users from selecting modes that would waste quota on tiny documents
+    or break token limits on large ones.
+    """
+    words = len(doc_text.split())
+    modes = ["Light", "Standard"]
+    if words >= 1500:
+        modes.append("Deep")
+    if words >= 3000:
+        modes.append("Full Document")
+    return modes
+
+
+def estimate_generation(doc_text: str, coverage_mode: str,
+                        content_type: str = "quiz") -> dict:
+    """
+    Calculate realistic estimates before the user clicks Generate.
+    Used to show time, API call count, and quota warnings in the UI.
+
+    content_type: "quiz" or "flashcards"
+    """
+    from chunker_utils import chunk_doc, is_long
+
+    mode     = COVERAGE_MODES[coverage_mode]
+    long     = is_long(doc_text)
+    sections = chunk_doc(doc_text) if long else [doc_text]
+    n_sec    = len(sections)
+
+    per_sec  = mode["q_per_section"] if content_type == "quiz" else mode["fc_per_section"]
+    target   = mode["questions"]     if content_type == "quiz" else mode["flashcards"]
+
+    if coverage_mode == "Full Document":
+        total_items    = n_sec * per_sec
+        sections_used  = n_sec
+    elif long:
+        sections_used  = min(n_sec, max(1, (target or 15) // per_sec))
+        total_items    = min(target or 15, sections_used * per_sec)
+    else:
+        sections_used  = 1
+        total_items    = target or 15
+
+    # Each section needs 1 API call; summaries may need n_sec calls on first run
+    api_calls   = sections_used + (n_sec if long else 0)
+    est_seconds = api_calls * 15    # conservative: 15s per call on free tier
+
+    return {
+        "total_items":    total_items,
+        "sections_used":  sections_used,
+        "total_sections": n_sec,
+        "api_calls":      api_calls,
+        "est_seconds":    est_seconds,
+        "est_label":      _seconds_to_label(est_seconds),
+        "is_large":       api_calls >= 6,
+        "quota_color":    mode["quota_color"],
+        "quota_label":    mode["quota"],
+    }
+
+
+def _seconds_to_label(s: int) -> str:
+    if s < 60:
+        return f"~{s}s"
+    m = s // 60
+    r = s % 60
+    return f"~{m}m {r}s" if r else f"~{m} min"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PER-SECTION CACHED GENERATION
+#  These are the atomic units of the chunked architecture.
+#  Each section is cached independently so a failure in section 7 only
+#  requires retrying section 7, not the entire document.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(show_spinner=False, ttl=7200)
+def get_quiz_section(doc_hash: str, section_idx: int,
+                     section_text: str, n: int, difficulty: str) -> list:
+    """
+    Generate quiz for one document section.
+    Cache key: doc_hash + section_idx + n + difficulty.
+    On cache hit: returns instantly, zero API calls.
+    """
+    raw = _raw(
+        prompts.quiz_section(section_text, section_idx + 1, 1, n, difficulty),
+        json_mode=True,
+        feature=f"quiz_s{section_idx + 1}",
+    )
+    return _validate_quiz(_parse_json(raw))
+
+
+@st.cache_data(show_spinner=False, ttl=7200)
+def get_fc_section(doc_hash: str, section_idx: int,
+                   section_text: str, n: int) -> list:
+    """
+    Generate flashcards for one document section.
+    Cache key: doc_hash + section_idx + n.
+    """
+    raw = _raw(
+        prompts.flashcards_section(section_text, section_idx + 1, 1, n),
+        json_mode=True,
+        feature=f"fc_s{section_idx + 1}",
+    )
+    return _validate_flashcards(_parse_json(raw))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PROGRESSIVE GENERATION ORCHESTRATORS
+#  These are NOT cached — they coordinate the per-section cached calls,
+#  display progress UI, and assemble the final result.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def generate_quiz(doc_hash: str, doc_text: str,
+                  coverage_mode: str, difficulty: str) -> tuple:
+    """
+    Intelligent quiz generation that scales with document size and coverage mode.
+
+    Short documents  → single consolidated call (fast, reliable)
+    Long documents   → per-section calls with individual caching
+                       (resilient: retry only failed sections)
+
+    Returns: (questions: list, coverage_report: list)
+    """
+    from chunker_utils import is_long, chunk_doc, MAX_CHARS
+
+    mode   = COVERAGE_MODES[coverage_mode]
+    target = mode["questions"]          # None for Full Document
+    q_per  = mode["q_per_section"]
+
+    if not is_long(doc_text):
+        # ── Short document: single call ───────────────────────────────────────
+        cap = target or 15
+        questions = get_quiz(doc_hash, doc_text[:MAX_CHARS], difficulty)
+        questions = questions[:cap]
+        report    = [{"section": 1, "q": len(questions), "covered": bool(questions)}]
+        return questions, report
+
+    # ── Long document: chunked generation ─────────────────────────────────────
+    # Step 1: Ensure section summaries are ready
+    with st.spinner("Loading document sections..."):
+        sections = get_section_summaries(doc_hash, doc_text)
+
+    n_sec = len(sections)
+    total = target or (n_sec * q_per)   # Full Document: all sections
+
+    # Determine how many sections to actually cover
+    if coverage_mode == "Full Document":
+        sections_to_cover = n_sec
+    else:
+        sections_to_cover = min(n_sec, max(1, (target or 15) // q_per + 1))
+
+    all_questions = []
+    coverage      = []
+
+    bar = st.progress(0, text=f"Generating questions (0/{sections_to_cover} sections)...")
+
+    for i in range(n_sec):
+        # Stop once we have enough (non-Full Document modes)
+        if target and len(all_questions) >= target:
+            coverage.append({"section": i + 1, "q": 0, "covered": False,
+                             "note": "target reached"})
+            continue
+
+        if i >= sections_to_cover and coverage_mode != "Full Document":
+            coverage.append({"section": i + 1, "q": 0, "covered": False,
+                             "note": "skipped"})
+            continue
+
+        pct  = int(((i + 1) / sections_to_cover) * 100)
+        done = sum(1 for r in coverage if r.get("covered"))
+        bar.progress(min(pct, 99),
+                     text=f"Section {i + 1}/{sections_to_cover} "
+                          f"({len(all_questions)} questions so far)...")
+
+        chunk_q = get_quiz_section(doc_hash, i, sections[i], q_per, difficulty)
+        all_questions.extend(chunk_q)
+        coverage.append({
+            "section": i + 1,
+            "q":       len(chunk_q),
+            "covered": bool(chunk_q),
+        })
+
+    bar.progress(100, text="Complete!")
+    time.sleep(0.25)
+    bar.empty()
+
+    final = all_questions[:target] if target else all_questions
+    return final, coverage
+
+
+def generate_flashcards(doc_hash: str, doc_text: str,
+                        coverage_mode: str) -> tuple:
+    """
+    Intelligent flashcard generation that scales with document size and coverage mode.
+    Returns: (flashcards: list, coverage_report: list)
+    """
+    from chunker_utils import is_long, chunk_doc, MAX_CHARS
+
+    mode      = COVERAGE_MODES[coverage_mode]
+    target    = mode["flashcards"]      # None for Full Document
+    fc_per    = mode["fc_per_section"]
+
+    if not is_long(doc_text):
+        cap   = target or 20
+        cards = get_flashcards(doc_hash, doc_text[:MAX_CHARS], cap)
+        report = [{"section": 1, "fc": len(cards), "covered": bool(cards)}]
+        return cards, report
+
+    with st.spinner("Loading document sections..."):
+        sections = get_section_summaries(doc_hash, doc_text)
+
+    n_sec  = len(sections)
+
+    if coverage_mode == "Full Document":
+        sections_to_cover = n_sec
+    else:
+        sections_to_cover = min(n_sec, max(1, (target or 20) // fc_per + 1))
+
+    all_cards = []
+    coverage  = []
+    bar = st.progress(0, text=f"Creating flashcards (0/{sections_to_cover} sections)...")
+
+    for i in range(n_sec):
+        if target and len(all_cards) >= target:
+            coverage.append({"section": i + 1, "fc": 0, "covered": False,
+                             "note": "target reached"})
+            continue
+
+        if i >= sections_to_cover and coverage_mode != "Full Document":
+            coverage.append({"section": i + 1, "fc": 0, "covered": False,
+                             "note": "skipped"})
+            continue
+
+        pct = int(((i + 1) / sections_to_cover) * 100)
+        bar.progress(min(pct, 99),
+                     text=f"Section {i + 1}/{sections_to_cover} "
+                          f"({len(all_cards)} cards so far)...")
+
+        chunk_fc = get_fc_section(doc_hash, i, sections[i], fc_per)
+        all_cards.extend(chunk_fc)
+        coverage.append({
+            "section": i + 1,
+            "fc":      len(chunk_fc),
+            "covered": bool(chunk_fc),
+        })
+
+    bar.progress(100, text="Complete!")
+    time.sleep(0.25)
+    bar.empty()
+
+    final = all_cards[:target] if target else all_cards
+    return final, coverage

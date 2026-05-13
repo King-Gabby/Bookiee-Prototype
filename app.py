@@ -133,6 +133,263 @@ def _empty(icon: str, msg: str):
         unsafe_allow_html=True)
 
 
+
+# ── Study mode CSS additions ───────────────────────────────────────────────────
+st.markdown("""
+<style>
+.coverage-card{background:#161b22;border:1px solid #30363d;border-radius:10px;
+  padding:1rem 1.25rem;margin-bottom:1rem}
+.coverage-row{display:flex;align-items:center;justify-content:space-between;
+  padding:5px 0;font-size:.8rem;border-bottom:1px solid #21262d}
+.coverage-row:last-child{border-bottom:none}
+.cov-sec{color:#8b949e}
+.cov-count{font-weight:600;color:#3fb950}
+.cov-skip{color:#484f57}
+.mode-info{border-radius:8px;padding:12px 16px;margin:10px 0 14px;font-size:.82rem;line-height:1.6}
+.warn-box{background:rgba(248,81,73,.07);border:1px solid rgba(248,81,73,.25);
+  border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#f87171}
+.quota-dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+  margin-right:5px;vertical-align:middle}
+</style>
+""", unsafe_allow_html=True)
+
+
+# ── Study mode helpers ─────────────────────────────────────────────────────────
+def _coverage_selector(key_suffix: str, doc_text: str) -> str:
+    """
+    Render an intelligent coverage mode selector.
+    Greys out modes that are not appropriate for this document size.
+    Returns the selected mode name.
+    """
+    allowed  = ai.available_modes(doc_text)
+    all_mode = ["Light", "Standard", "Deep", "Full Document"]
+    stored   = st.session_state.get(
+        state.QUIZ_MODE if key_suffix == "quiz" else state.FC_MODE, "Standard"
+    )
+    # Fall back to highest available if stored mode not available
+    default  = stored if stored in allowed else allowed[-1]
+
+    selected = st.select_slider(
+        "Coverage",
+        options=all_mode,
+        value=default,
+        key=f"cov_{key_suffix}_{d_hash[:6]}",
+    )
+
+    # Persist choice
+    sk = state.QUIZ_MODE if key_suffix == "quiz" else state.FC_MODE
+    st.session_state[sk] = selected
+
+    if selected not in allowed:
+        st.caption(f"*{selected}* requires a longer document — "
+                   f"using **{allowed[-1]}** instead.")
+        selected = allowed[-1]
+
+    return selected
+
+
+def _mode_info_card(selected: str, doc_text: str, content_type: str) -> dict:
+    """
+    Show an info card with item count, section coverage, estimated time, and
+    a quota warning for large generations.
+    Returns the estimate dict for use by the caller.
+    """
+    est   = ai.estimate_generation(doc_text, selected, content_type)
+    mode  = ai.COVERAGE_MODES[selected]
+    color = mode["quota_color"]
+    item  = "questions" if content_type == "quiz" else "cards"
+
+    # Info card
+    st.markdown(
+        f'<div class="mode-info" style="background:rgba(46,160,67,.06);'
+        f'border:1px solid rgba(46,160,67,.2)">'
+        f'<strong style="color:#e6edf3">{selected}</strong> &nbsp;·&nbsp; '
+        f'~{est["total_items"]} {item} &nbsp;·&nbsp; '
+        f'{est["sections_used"]}/{est["total_sections"]} sections &nbsp;·&nbsp; '
+        f'{est["est_label"]} &nbsp;·&nbsp; '
+        f'<span class="quota-dot" style="background:{color}"></span>'
+        f'<span style="color:{color}">{est["quota_label"]} quota</span>'
+        f'</div>',
+        unsafe_allow_html=True)
+
+    # Quota warning for large generations
+    if est["is_large"]:
+        st.markdown(
+            f'<div class="warn-box">'
+            f'Large generation detected &mdash; ~{est["api_calls"]} API calls, '
+            f'estimated {est["est_label"]}. '
+            f'This will consume significant free-tier quota. '
+            f'Consider <strong>Standard</strong> for faster results.'
+            f'</div>',
+            unsafe_allow_html=True)
+
+    return est
+
+
+def _coverage_report(report: list, content_type: str) -> None:
+    """Render a per-section coverage report after generation."""
+    if not report:
+        return
+    item = "Q" if content_type == "quiz" else "cards"
+    total = sum(r.get("q" if content_type == "quiz" else "fc", 0) for r in report)
+    covered = sum(1 for r in report if r.get("covered"))
+
+    rows = ""
+    for r in report:
+        sec = r.get("section", "?")
+        cnt = r.get("q" if content_type == "quiz" else "fc", 0)
+        note = r.get("note", "")
+        if r.get("covered"):
+            rows += (f'<div class="coverage-row">'
+                     f'<span class="cov-sec">Section {sec}</span>'
+                     f'<span class="cov-count">\u2705 {cnt} {item}</span></div>')
+        elif note == "target reached":
+            rows += (f'<div class="coverage-row">'
+                     f'<span class="cov-sec">Section {sec}</span>'
+                     f'<span class="cov-skip">target reached</span></div>')
+        else:
+            rows += (f'<div class="coverage-row">'
+                     f'<span class="cov-sec">Section {sec}</span>'
+                     f'<span class="cov-skip">\u2014 skipped</span></div>')
+
+    st.markdown(
+        f'<div class="coverage-card">'
+        f'<div class="bk-card-title">Coverage Report &mdash; '
+        f'{total} {item} across {covered}/{len(report)} sections</div>'
+        f'{rows}</div>',
+        unsafe_allow_html=True)
+
+
+def _render_quiz_mode(doc_text: str, d_hash: str, long_doc: bool):
+    """Full Quiz mode rendering with coverage controls and chunked generation."""
+    selected = _coverage_selector("quiz", doc_text)
+    diff     = st.select_slider("Difficulty", ["Easy", "Medium", "Hard"], value="Medium",
+                                key=f"diff_{d_hash[:6]}")
+    est      = _mode_info_card(selected, doc_text, "quiz")
+
+    quiz_data    = st.session_state.get(state.QUIZ_DATA, [])
+    quiz_answers = st.session_state.get(state.QUIZ_ANSWERS, {})
+    quiz_cover   = st.session_state.get(state.QUIZ_COVERAGE, [])
+
+    if st.button("Generate Quiz", use_container_width=True):
+        with st.container():
+            questions, report = ai.generate_quiz(d_hash, doc_text, selected, diff)
+        if questions:
+            st.session_state[state.QUIZ_DATA]      = questions
+            st.session_state[state.QUIZ_ANSWERS]   = {}
+            st.session_state[state.QUIZ_COVERAGE]  = report
+            st.session_state[state.QUIZZES_TAKEN]  = (
+                st.session_state.get(state.QUIZZES_TAKEN, 0) + 1)
+            st.toast(f"{len(questions)} questions ready!", icon="\U0001f4dd")
+            st.rerun()
+        else:
+            st.error("Generation failed. Try a smaller coverage mode or paste shorter text.")
+
+    # Coverage report
+    if quiz_cover:
+        _coverage_report(quiz_cover, "quiz")
+
+    # Quiz display
+    if quiz_data:
+        total    = len(quiz_data)
+        answered = len(quiz_answers)
+        correct  = sum(1 for i, q in enumerate(quiz_data)
+                       if quiz_answers.get(i) == q.get("answer", ""))
+
+        st.markdown(
+            f'<div class="score-badge">'
+            f'{correct}/{total} correct &nbsp;\u00b7&nbsp; {answered} answered'
+            f'</div>', unsafe_allow_html=True)
+
+        if answered == total > 0:
+            rmd = f"# Quiz Results\nScore: {correct}/{total}\n\n"
+            for i, q in enumerate(quiz_data):
+                g = quiz_answers.get(i, "?")
+                rmd += (f"**Q{i+1}.** {q.get('question','')}\n"
+                        f"Yours: {g} | Correct: {q.get('answer','')}\n"
+                        f"Explanation: {q.get('explanation','')}\n\n")
+            st.download_button("Export Results", data=rmd,
+                               file_name="bookiee_quiz.md", mime="text/markdown")
+
+        for i, q in enumerate(quiz_data):
+            done  = i in quiz_answers
+            given = quiz_answers.get(i, "")
+            ans   = q.get("answer", "")
+            icon  = "\u2705" if done and given == ans else ("\u274c" if done else "\u25cb")
+            with st.expander(f"{icon}  Q{i+1}. {q.get('question','')[:75]}",
+                             expanded=not done):
+                chosen = st.radio("", q.get("options", []),
+                                  key=f"qr_{i}_{d_hash}",
+                                  label_visibility="collapsed")
+                if not done:
+                    if st.button("Submit", key=f"qs_{i}_{d_hash}"):
+                        st.session_state[state.QUIZ_ANSWERS][i] = (chosen or " ")[0]
+                        st.rerun()
+                else:
+                    if given == ans:
+                        st.success(f"Correct! Answer: **{ans}**")
+                    else:
+                        st.error(f"You chose **{given}** \u00b7 Correct: **{ans}**")
+                    st.caption(q.get("explanation", ""))
+
+
+def _render_flashcard_mode(doc_text: str, d_hash: str, long_doc: bool):
+    """Full Flashcard mode rendering with coverage controls and chunked generation."""
+    selected = _coverage_selector("fc", doc_text)
+    n_label  = ai.COVERAGE_MODES[selected]["flashcards"] or "adaptive"
+    est      = _mode_info_card(selected, doc_text, "flashcards")
+
+    fc_data   = st.session_state.get(state.FC_DATA, [])
+    fc_flipped = st.session_state.get(state.FC_FLIPPED, set())
+    fc_cover  = st.session_state.get(state.FC_COVERAGE, [])
+
+    if st.button("Generate Flashcards", use_container_width=True):
+        with st.container():
+            cards, report = ai.generate_flashcards(d_hash, doc_text, selected)
+        if cards:
+            st.session_state[state.FC_DATA]     = cards
+            st.session_state[state.FC_FLIPPED]  = set()
+            st.session_state[state.FC_COVERAGE] = report
+            st.toast(f"{len(cards)} flashcards ready!", icon="\U0001f0cf")
+            st.rerun()
+        else:
+            st.error("Generation failed. Try a smaller coverage mode.")
+
+    # Coverage report
+    if fc_cover:
+        _coverage_report(fc_cover, "flashcards")
+
+    # Flashcard display
+    if fc_data:
+        total_fc = len(fc_data)
+        revealed = len(fc_flipped)
+        st.markdown(
+            f'<div class="score-badge">{revealed}/{total_fc} revealed</div>',
+            unsafe_allow_html=True)
+
+        fa, fb = st.columns(2)
+        if fa.button("Flip all",  use_container_width=True):
+            st.session_state[state.FC_FLIPPED] = set(range(total_fc)); st.rerun()
+        if fb.button("Reset all", use_container_width=True):
+            st.session_state[state.FC_FLIPPED] = set();                st.rerun()
+
+        cols = st.columns(2)
+        for i, card in enumerate(fc_data):
+            flipped = i in fc_flipped
+            content = card.get("back" if flipped else "front", "")
+            with cols[i % 2]:
+                st.markdown(
+                    f'<div class="{"fc flipped" if flipped else "fc"}">'
+                    f'<div class="fc-label">{"BACK" if flipped else "FRONT"}</div>'
+                    f'<div class="{"fc-back" if flipped else "fc-front"}">{content}</div></div>',
+                    unsafe_allow_html=True)
+                if st.button("Flip", key=f"fc_{i}_{d_hash}", use_container_width=True):
+                    if flipped: st.session_state[state.FC_FLIPPED].discard(i)
+                    else:       st.session_state[state.FC_FLIPPED].add(i)
+                    st.rerun()
+
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -497,7 +754,11 @@ with tab2:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  TAB 3 \u2014 STUDY MODE
+#  TAB 3 — STUDY MODE
+#
+#  Architecture: coverage modes → adaptive limits → chunked generation
+#  Each section is cached independently. Failure in section N = retry section N only.
+#  Quota warnings and time estimates shown BEFORE generation.
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     if not has_doc:
@@ -508,185 +769,48 @@ with tab3:
 
         # ── QUIZ ──────────────────────────────────────────────────────────────
         if mode == "\U0001f4dd  Quiz":
-            diff = st.select_slider("Difficulty",
-                                    options=["Easy", "Medium", "Hard"],
-                                    value="Medium")
-
-            if st.button("Generate Quiz", use_container_width=True):
-                with st.spinner("Building quiz..."):
-                    if long_doc:
-                        sections = ai.get_section_summaries(d_hash, doc_text)
-                        ctx = "\n\n".join(sections)[:chu.MAX_CHARS]
-                    else:
-                        ctx = doc_text[:chu.MAX_CHARS]
-                    questions = ai.get_quiz(d_hash, ctx, diff)
-                    if questions:
-                        st.session_state[state.QUIZ_DATA]    = questions
-                        st.session_state[state.QUIZ_ANSWERS] = {}
-                        st.session_state[state.QUIZZES_TAKEN] = (
-                            st.session_state.get(state.QUIZZES_TAKEN, 0) + 1
-                        )
-                        st.toast("Quiz ready!", icon="\U0001f4dd")
-                    else:
-                        st.error("Quiz generation failed. Try again.")
-                # No st.rerun() needed - questions render from session state below
-
-            quiz_data    = st.session_state.get(state.QUIZ_DATA, [])
-            quiz_answers = st.session_state.get(state.QUIZ_ANSWERS, {})
-
-            if quiz_data:
-                total    = len(quiz_data)
-                answered = len(quiz_answers)
-                correct  = sum(1 for i, q in enumerate(quiz_data)
-                               if quiz_answers.get(i) == q.get("answer", ""))
-
-                st.markdown(
-                    f'<div class="score-badge">'
-                    f'{correct}/{total} correct \u00b7 {answered} answered</div>',
-                    unsafe_allow_html=True)
-
-                if answered == total > 0:
-                    rmd = f"# Quiz Results\nScore: {correct}/{total}\n\n"
-                    for i, q in enumerate(quiz_data):
-                        g = quiz_answers.get(i, "?")
-                        rmd += (f"**Q{i+1}.** {q.get('question','')}\n"
-                                f"Yours: {g} | Correct: {q.get('answer','')}\n"
-                                f"Explanation: {q.get('explanation','')}\n\n")
-                    st.download_button("Export Results", data=rmd,
-                                       file_name="bookiee_quiz.md",
-                                       mime="text/markdown")
-
-                for i, q in enumerate(quiz_data):
-                    done  = i in quiz_answers
-                    given = quiz_answers.get(i, "")
-                    ans   = q.get("answer", "")
-                    icon  = "\u2705" if done and given == ans else ("\u274c" if done else "\u25cb")
-
-                    with st.expander(f"{icon}  Q{i+1}. {q.get('question','')[:75]}",
-                                     expanded=not done):
-                        chosen = st.radio("", q.get("options", []),
-                                          key=f"qr_{i}_{d_hash}",
-                                          label_visibility="collapsed")
-                        if not done:
-                            if st.button("Submit", key=f"qs_{i}_{d_hash}"):
-                                st.session_state[state.QUIZ_ANSWERS][i] = (
-                                    (chosen or " ")[0]
-                                )
-                                # st.rerun() needed here: the `done` flag was evaluated
-                                # at the top of this loop before the button click.
-                                # Without rerun, the result won't show until next interaction.
-                                st.rerun()
-                        else:
-                            if given == ans:
-                                st.success(f"Correct! Answer: **{ans}**")
-                            else:
-                                st.error(f"You chose **{given}** \u00b7 Correct: **{ans}**")
-                            st.caption(q.get("explanation", ""))
+            _render_quiz_mode(doc_text, d_hash, long_doc)
 
         # ── FLASHCARDS ────────────────────────────────────────────────────────
         elif mode == "\U0001f0cf  Flashcards":
-            n = st.slider("Number of cards", 4, 16, 8, step=2)
-
-            if st.button("Generate Flashcards", use_container_width=True):
-                with st.spinner(f"Creating {n} flashcards..."):
-                    if long_doc:
-                        sections = ai.get_section_summaries(d_hash, doc_text)
-                        ctx = "\n\n".join(sections)[:chu.MAX_CHARS]
-                    else:
-                        ctx = doc_text[:chu.MAX_CHARS]
-                    cards = ai.get_flashcards(d_hash, ctx, n)
-                    if cards:
-                        st.session_state[state.FC_DATA]    = cards
-                        st.session_state[state.FC_FLIPPED] = set()
-                        st.toast(f"{len(cards)} flashcards ready!", icon="\U0001f0cf")
-                    else:
-                        st.error("Flashcard generation failed. Try again.")
-
-            fc_data    = st.session_state.get(state.FC_DATA, [])
-            fc_flipped = st.session_state.get(state.FC_FLIPPED, set())
-
-            if fc_data:
-                total_fc = len(fc_data)
-                revealed = len(fc_flipped)
-                st.markdown(
-                    f'<div class="score-badge">{revealed}/{total_fc} revealed</div>',
-                    unsafe_allow_html=True)
-
-                fa, fb = st.columns(2)
-                if fa.button("Flip all", use_container_width=True):
-                    st.session_state[state.FC_FLIPPED] = set(range(total_fc))
-                    st.rerun()
-                if fb.button("Reset all", use_container_width=True):
-                    st.session_state[state.FC_FLIPPED] = set()
-                    st.rerun()
-
-                cols = st.columns(2)
-                for i, card in enumerate(fc_data):
-                    flipped = i in fc_flipped
-                    content = card.get("back" if flipped else "front", "")
-                    with cols[i % 2]:
-                        st.markdown(
-                            f'<div class="{"fc flipped" if flipped else "fc"}">'
-                            f'<div class="fc-label">{"BACK" if flipped else "FRONT"}</div>'
-                            f'<div class="{"fc-back" if flipped else "fc-front"}">'
-                            f'{content}</div></div>',
-                            unsafe_allow_html=True)
-                        if st.button("Flip", key=f"fc_{i}_{d_hash}",
-                                     use_container_width=True):
-                            if flipped:
-                                st.session_state[state.FC_FLIPPED].discard(i)
-                            else:
-                                st.session_state[state.FC_FLIPPED].add(i)
-                            st.rerun()
+            _render_flashcard_mode(doc_text, d_hash, long_doc)
 
         # ── SIMPLIFY ──────────────────────────────────────────────────────────
         elif mode == "\u270f\ufe0f  Simplify":
             audience = st.radio("Explain as a:",
-                                ["Complete beginner",
-                                 "Curious teenager",
-                                 "Busy professional"],
+                                ["Complete beginner", "Curious teenager", "Busy professional"],
                                 horizontal=True)
-
             if st.button("Simplify", use_container_width=True):
-                ctx    = (
-                    " ".join(chu.chunk_doc(doc_text)[:2])[:chu.MAX_CHARS]
-                    if long_doc else doc_text[:chu.MAX_CHARS]
-                )
+                ctx    = (" ".join(chu.chunk_doc(doc_text)[:2])[:chu.MAX_CHARS]
+                          if long_doc else doc_text[:chu.MAX_CHARS])
                 holder = st.empty()
                 full   = ""
-                for chunk in ai.stream_call(
-                    prompts.simplify(ctx, audience), feature="simplify"
-                ):
+                for chunk in ai.stream_call(prompts.simplify(ctx, audience), feature="simplify"):
                     full += chunk
                     holder.markdown(
-                        f'<div class="bk-card">'
-                        f'<div class="bk-card-title">For: {audience}</div>'
+                        f'<div class="bk-card"><div class="bk-card-title">For: {audience}</div>'
                         f'<div class="bk-card-body">{full}</div></div>',
                         unsafe_allow_html=True)
                 holder.empty()
                 st.session_state[state.SIMPLIFY_TEXT] = full
                 st.session_state[state.SIMPLIFY_AUD]  = audience
-                # No st.rerun() - renders immediately below
 
             if st.session_state.get(state.SIMPLIFY_TEXT):
                 st.markdown(
-                    f'<div class="bk-card">'
-                    f'<div class="bk-card-title">'
+                    f'<div class="bk-card"><div class="bk-card-title">'
                     f'{st.session_state.get(state.SIMPLIFY_AUD, "Simplified")}</div>'
-                    f'<div class="bk-card-body">'
-                    f'{st.session_state[state.SIMPLIFY_TEXT]}</div></div>',
+                    f'<div class="bk-card-body">{st.session_state[state.SIMPLIFY_TEXT]}</div></div>',
                     unsafe_allow_html=True)
-                st.download_button(
-                    "Export Explanation",
-                    data=st.session_state[state.SIMPLIFY_TEXT],
-                    file_name="bookiee_simplified.txt",
-                    mime="text/plain")
+                st.download_button("Export Explanation",
+                                   data=st.session_state[state.SIMPLIFY_TEXT],
+                                   file_name="bookiee_simplified.txt", mime="text/plain")
 
 
+# ── Footer ─────────────────────────────────────────────────────────────────────
 # ── Footer ─────────────────────────────────────────────────────────────────────
 st.divider()
 st.markdown(
     f"<p style='text-align:center;font-size:.75rem;color:#484f57'>"
     f"Bookiee AI v{APP_VERSION} \u00b7 Streamlit + Gemini 2.5 Flash \u00b7 "
     "<a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
-    unsafe_allow_html=True)
+    unsafe_allow_html=True) 

@@ -203,3 +203,40 @@ def find_relevant_chunk(chunks_summary: str, question: str) -> str:
         f"Summaries:\n{chunks_summary}\n\n"
         f"Question: {question}"
     )
+
+
+# ── Section-specific generation (for chunked architecture) ─────────────────────
+def quiz_section(section_text: str, section_num: int,
+                 total_sections: int, n: int, difficulty: str) -> str:
+    """
+    Quiz prompt for a single document section.
+    Section-aware phrasing helps the model stay focused on that section only,
+    preventing it from hallucinating content from other parts of the document.
+    """
+    hint = {
+        "Easy":   "recall and comprehension",
+        "Medium": "comprehension and application",
+        "Hard":   "analysis, inference, and critical thinking",
+    }.get(difficulty, "comprehension")
+    return (
+        f"You are reading section {section_num} of {total_sections} from a document. "
+        f"Create EXACTLY {n} {hint} multiple-choice questions based ONLY on the text below. "
+        f"Do not invent information not present in this section. "
+        f"Return a JSON array of objects with: "
+        f"'question' (string), 'options' (array of 4 strings prefixed A. B. C. D.), "
+        f"'answer' (single letter A B C or D), 'explanation' (one sentence).\n\n"
+        f"Section text:\n{section_text}"
+    )
+
+
+def flashcards_section(section_text: str, section_num: int,
+                       total_sections: int, n: int) -> str:
+    """Flashcard prompt for a single document section."""
+    return (
+        f"You are reading section {section_num} of {total_sections} from a document. "
+        f"Create EXACTLY {n} flashcards from the key terms and concepts in the text below. "
+        f"Return a JSON array of objects with "
+        f"'front' (term or question, under 10 words) and "
+        f"'back' (definition or answer, 1-2 sentences).\n\n"
+        f"Section text:\n{section_text}"
+    )

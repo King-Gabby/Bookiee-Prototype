@@ -28,6 +28,12 @@ FC_FLIPPED    = _k("fc_flipped")
 SIMPLIFY_TEXT = _k("simplify_text")
 SIMPLIFY_AUD  = _k("simplify_aud")
 
+# Study mode state
+QUIZ_COVERAGE = _k("quiz_coverage")   # [{section, q, covered}]
+FC_COVERAGE   = _k("fc_coverage")     # [{section, fc, covered}]
+QUIZ_MODE     = _k("quiz_mode")        # current coverage mode label
+FC_MODE       = _k("fc_mode")          # current coverage mode label
+
 # UI state — persists across document changes
 PENDING_Q     = _k("pending_q")
 
@@ -52,6 +58,8 @@ _MUTABLE = {
     FC_FLIPPED:     set,
     DEEP_DIVES:     dict,
     AI_LOG:         list,
+    QUIZ_COVERAGE:  list,
+    FC_COVERAGE:    list,
 }
 
 _SCALAR = {
@@ -68,6 +76,8 @@ _SCALAR = {
     QUIZZES_TAKEN: 0,
     LAST_AI_TS:    0.0,
     AI_CALL_COUNT: 0,
+    QUIZ_MODE:     "Standard",
+    FC_MODE:       "Standard",
 }
 
 
@@ -127,3 +137,5 @@ def _reset_doc_derived() -> None:
     st.session_state[SIMPLIFY_TEXT]  = ""
     st.session_state[SIMPLIFY_AUD]   = ""
     st.session_state[DEEP_DIVES]     = {}
+    st.session_state[QUIZ_COVERAGE]  = []
+    st.session_state[FC_COVERAGE]    = []
