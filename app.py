@@ -395,7 +395,7 @@ def _render_flashcard_mode(doc_text: str, d_hash: str, long_doc: bool):
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### \U0001f4da Bookiee AI")
-    st.caption(f"v{APP_VERSION}  \u00b7  Gemini 2.5 Flash")
+    st.caption(f"Just a prototype. \nThe main app build is in progress!")
     st.divider()
 
     # -- Demo
@@ -478,12 +478,11 @@ with st.sidebar:
         st.markdown("""
 1. **Upload** PDF / .txt / .md or paste text
 2. **Analyze** \u2192 summary, key points, concepts  
-   *(1 API call \u2014 was 3)*
 3. **Chat** \u2192 ask anything; long docs use smart section matching
 4. **Study** \u2192 quiz, flashcards, simplified explanation
 
-All results are **cached** for 2 hours \u2014 zero redundant calls.
-Long docs are **chunked** and synthesized automatically.
+All results are **cached** for 2 hours, zero redundant calls.
+Long docs are **processed** and synthesized automatically.
         """)
     with st.expander("AI diagnostics"):
         ai.render_diagnostics()
@@ -495,7 +494,7 @@ Long docs are **chunked** and synthesized automatically.
 st.markdown("""
 <div class="bk-header">
   <h1>\U0001f4da Bookiee AI</h1>
-  <p>Upload any document \u2192 understand it deeply \u00b7 study it fast.</p>
+  <p>Upload any document \u2192 understand it deeply \u00b7 crush your exams.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -529,10 +528,10 @@ with tab1:
                 sum_ph = st.empty()
 
                 if long_doc:
-                    prog.progress(5, "Chunking document...")
+                    prog.progress(5, "Processing document...")
                     sections = ai.get_section_summaries(d_hash, doc_text)
 
-                    prog.progress(60, "Synthesizing summary...")
+                    prog.progress(60, "Preparing summary...")
                     full_summary = ""
                     for chunk in ai.stream_call(
                         prompts.synthesize_summary(sections), feature="summary"
@@ -811,6 +810,6 @@ with tab3:
 st.divider()
 st.markdown(
     f"<p style='text-align:center;font-size:.75rem;color:#484f57'>"
-    f"Bookiee AI v{APP_VERSION} \u00b7 Streamlit + Gemini 2.5 Flash \u00b7 "
-    "<a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
+    f"Bookiee AI Prototype \u00b7 App build in progres \n + Powered by CelesTium (Next Gen AI Infrastructure Company)\n \u00b7 "
+    "View Gabriel's GitHub? <a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
     unsafe_allow_html=True) 
