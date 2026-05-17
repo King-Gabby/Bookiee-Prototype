@@ -750,7 +750,7 @@ with tab1:
 
                     prog.progress(80, "Extracting points and concepts...")
                     pc = ai.get_points_and_concepts(
-                        d_hash, "\n\n".join(sections)[:MAX_CHARS])
+                        d_hash, "\n\n".join(sections)[:chu.MAX_CHARS])
 
                 else:
                     ctx = _clean_ctx(doc_text)[:chu.MAX_CHARS]
