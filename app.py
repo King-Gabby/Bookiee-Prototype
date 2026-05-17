@@ -599,7 +599,7 @@ def _render_flashcard_mode(doc_text: str, d_hash: str, long_doc: bool):
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### \U0001f4da Bookiee AI")
-    st.caption(f"v{APP_VERSION}  \u00b7  Gemini 2.5 Flash")
+    st.caption(f"Powered by CelesTium. (Next Gen AI Infrastructure Company)")
     st.divider()
 
     # -- Demo
@@ -682,7 +682,6 @@ with st.sidebar:
         st.markdown("""
 1. **Upload** PDF / .txt / .md or paste text
 2. **Analyze** \u2192 summary, key points, concepts  
-   *(1 API call \u2014 was 3)*
 3. **Chat** \u2192 ask anything; long docs use smart section matching
 4. **Study** \u2192 quiz, flashcards, simplified explanation
 
@@ -699,7 +698,7 @@ Long docs are **chunked** and synthesized automatically.
 st.markdown("""
 <div class="bk-header">
   <h1>\U0001f4da Bookiee AI</h1>
-  <p>Upload any document \u2192 understand it deeply \u00b7 study it fast.</p>
+  <p>Upload any document \u2192 understand it deeply \u00b7 crush your exams.</p>
 </div>
 """, unsafe_allow_html=True)
 
