@@ -31,7 +31,8 @@ from google.genai import types
 
 import state
 import prompts
-from chunker_utils import chunk_doc, MAX_CHARS
+from chunker_utils import (chunk_doc, MAX_CHARS, is_long,
+                           clean_core_text, _filter_question_metadata)
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 MODEL         = "gemini-2.5-flash"
@@ -314,7 +315,10 @@ def get_quiz(doc_hash: str, context: str, difficulty: str) -> list:
     """Cached quiz. Same doc + difficulty = no re-call."""
     raw  = _raw(prompts.quiz(context, difficulty, 5),
                 json_mode=True, feature=f"quiz:{difficulty}")
-    return _validate_quiz(_parse_json(raw))
+    validated = _validate_quiz(_parse_json(raw))
+    # LAYER 3: post-generation filter — remove metadata-based questions
+    filtered = _filter_question_metadata(validated)
+    return filtered if filtered else validated  # safety: return unfiltered if all removed
 
 
 @st.cache_data(show_spinner=False, ttl=7200)
@@ -554,7 +558,8 @@ def get_quiz_section(doc_hash: str, section_idx: int,
         json_mode=True,
         feature=f"quiz_s{section_idx + 1}",
     )
-    return _validate_quiz(_parse_json(raw))
+    validated = _validate_quiz(_parse_json(raw))
+    return _filter_question_metadata(validated)
 
 
 @st.cache_data(show_spinner=False, ttl=7200)
@@ -598,7 +603,8 @@ def generate_quiz(doc_hash: str, doc_text: str,
     if not is_long(doc_text):
         # ── Short document: single call ───────────────────────────────────────
         cap = target or 15
-        questions = get_quiz(doc_hash, doc_text[:MAX_CHARS], difficulty)
+        clean_ctx  = clean_core_text(doc_text)[:MAX_CHARS]
+        questions  = get_quiz(doc_hash, clean_ctx, difficulty)
         questions = questions[:cap]
         report    = [{"section": 1, "q": len(questions), "covered": bool(questions)}]
         return questions, report

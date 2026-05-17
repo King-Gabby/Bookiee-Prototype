@@ -17,9 +17,24 @@ SYSTEM_JSON = (
 )
 
 
+
+
+# ── Content quality constraint ─────────────────────────────────────────────────
+# Injected into ALL generation prompts as a second layer of defence against
+# metadata contamination (the first layer is clean_core_text() preprocessing).
+CONTENT_CONSTRAINT = (
+    "IMPORTANT: Base your response ONLY on the main educational content — "
+    "explanations, arguments, definitions, examples, and key concepts. "
+    "Completely ignore and do not reference: author biographies, acknowledgements, "
+    "preface, foreword, table of contents, bibliography, references, copyright "
+    "notices, publisher information, or any other document metadata. "
+    "If uncertain whether text is educational, prefer dense explanatory paragraphs."
+)
+
 # ── Analysis prompts (streaming) ───────────────────────────────────────────────
 def summary(context: str) -> str:
     return (
+        f"{CONTENT_CONSTRAINT}\n\n"
         "Write a clear, insightful summary in 3-4 well-structured paragraphs. "
         "Cover the main argument, key evidence, and key implications. "
         "Write for an intelligent adult reader:\n\n"
@@ -70,8 +85,9 @@ def chat(context: str, question: str) -> str:
 # ── JSON prompts (structured output) ──────────────────────────────────────────
 def key_points(context: str) -> str:
     return (
-        "Extract exactly 7 key ideas from the text below. "
-        "Each idea should be a standalone insight under 15 words. "
+        f"{CONTENT_CONSTRAINT}\n\n"
+        "Extract exactly 7 key ideas from the educational content below. "
+        "Each idea should be a standalone conceptual insight under 15 words. "
         "Return a JSON array of strings.\n\n"
         f"{context}"
     )
@@ -104,10 +120,13 @@ def quiz(context: str, difficulty: str = "Medium", n: int = 5) -> str:
 
 def flashcards(context: str, n: int = 8) -> str:
     return (
-        f"Create exactly {n} flashcards from the text below. "
-        f"Return a JSON array of objects. Each object must have exactly two fields: "
-        f"'front' (a concise term, concept, or question — under 10 words) and "
-        f"'back' (a clear definition or answer — 1-2 sentences).\n\n"
+        f"{CONTENT_CONSTRAINT}\n\n"
+        f"Create exactly {n} flashcards from the educational content below. "
+        f"Flashcards must be concept-driven: test definitions, processes, and key ideas — "
+        f"not author names, chapter titles, or structural metadata.\n"
+        f"Return a JSON array of objects with "
+        f"'front' (term or question, under 10 words) and "
+        f"'back' (definition or answer, 1-2 sentences).\n\n"
         f"{context}"
     )
 
@@ -219,8 +238,10 @@ def quiz_section(section_text: str, section_num: int,
         "Hard":   "analysis, inference, and critical thinking",
     }.get(difficulty, "comprehension")
     return (
+        f"{CONTENT_CONSTRAINT}\n\n"
         f"You are reading section {section_num} of {total_sections} from a document. "
-        f"Create EXACTLY {n} {hint} multiple-choice questions based ONLY on the text below. "
+        f"Create EXACTLY {n} {hint} multiple-choice questions based ONLY on the "
+        f"main educational content of this section — not metadata, not structure. "
         f"Do not invent information not present in this section. "
         f"Return a JSON array of objects with: "
         f"'question' (string), 'options' (array of 4 strings prefixed A. B. C. D.), "
@@ -233,8 +254,10 @@ def flashcards_section(section_text: str, section_num: int,
                        total_sections: int, n: int) -> str:
     """Flashcard prompt for a single document section."""
     return (
+        f"{CONTENT_CONSTRAINT}\n\n"
         f"You are reading section {section_num} of {total_sections} from a document. "
-        f"Create EXACTLY {n} flashcards from the key terms and concepts in the text below. "
+        f"Create EXACTLY {n} concept-driven flashcards from this section. "
+        f"Focus on definitions, processes, and key ideas — not document structure. "
         f"Return a JSON array of objects with "
         f"'front' (term or question, under 10 words) and "
         f"'back' (definition or answer, 1-2 sentences).\n\n"

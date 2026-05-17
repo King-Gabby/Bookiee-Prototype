@@ -14,6 +14,7 @@ import time
 import state
 import ai_engine as ai
 import chunker_utils as chu
+from chunker_utils import clean_core_text as _clean_ctx
 import prompts
 
 # ── Init session state FIRST, before any st calls that reference it ────────────
@@ -98,7 +99,7 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif}
   border:1px solid rgba(46,160,67,.3);border-radius:20px;padding:5px 14px;
   font-size:.8rem;color:#3fb950;font-weight:600;margin-bottom:14px}
 .fc{background:#0d1117;border:1.5px solid #30363d;border-radius:10px;
-  padding:1.2rem;text-align:center;min-height:110px;display:flex;
+  padding:1.2rem;text-align:center;height:auto;min-height:unset;display:flex;
   flex-direction:column;align-items:center;justify-content:center;transition:border-color .2s}
 .fc.flipped{border-color:#3fb950;background:#070f0a}
 .fc-label{font-size:.65rem;color:#484f57;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px}
@@ -114,6 +115,67 @@ html,body,[class*="css"]{font-family:'DM Sans',sans-serif}
 [data-testid="stSidebar"]{background:#0d1117;border-right:1px solid #21262d}
 .stTextArea textarea{background:#0d1117!important;border-color:#30363d!important;color:#e6edf3!important}
 footer{visibility:hidden}
+
+/* ══════════════════════════════════════════════════════
+   QUIZ RENDERING — zero height constraints, full wrapping
+   ══════════════════════════════════════════════════════ */
+.quiz-question-text{
+  color:#e6edf3;font-size:.95rem;line-height:1.75;
+  margin-bottom:1.1rem;
+  word-wrap:break-word;overflow-wrap:break-word;
+  white-space:normal;hyphens:auto;max-width:100%}
+.quiz-option{
+  background:#161b22;border:1px solid #30363d;border-radius:7px;
+  padding:8px 12px;margin-bottom:6px;font-size:.88rem;color:#c9d1d9;
+  word-wrap:break-word;overflow-wrap:break-word;white-space:normal;
+  cursor:pointer;transition:border-color .15s}
+.quiz-option:hover{border-color:#3fb950}
+.quiz-option.correct{border-color:#3fb950;background:rgba(46,160,67,.12);color:#7ee787}
+.quiz-option.wrong{border-color:#f85149;background:rgba(248,81,73,.08);color:#f87171}
+.quiz-option.neutral{border-color:#484f57;color:#8b949e}
+.quiz-expl{font-size:.82rem;color:#8b949e;line-height:1.65;margin-top:.85rem;
+  padding:.75rem 1rem;background:#0d1117;border-radius:6px;
+  border-left:2px solid #3fb950;
+  word-wrap:break-word;overflow-wrap:break-word}
+/* Remove all Streamlit overflow clipping on expanders */
+[data-testid="stExpander"]{overflow:visible!important}
+[data-testid="stExpander"]>div{overflow:visible!important;max-width:100%!important}
+/* Radio label: force wrapping */
+.stRadio>div>label{
+  word-wrap:break-word!important;overflow-wrap:break-word!important;
+  white-space:normal!important;line-height:1.6!important;
+  padding:6px 0!important;cursor:pointer!important}
+.stRadio>div{gap:.35rem!important}
+/* All cards: no hidden overflow, auto height */
+.bk-card,.coverage-card{
+  overflow:visible!important;height:auto!important;max-height:none!important}
+/* Flashcard text: full wrapping */
+.fc-front,.fc-back{
+  word-wrap:break-word!important;overflow-wrap:break-word!important;
+  white-space:normal!important;width:100%}
+/* Show-more toggle */
+.show-more-text{color:#3fb950;font-size:.8rem;cursor:pointer;
+  font-family:'DM Sans',sans-serif}
+/* ══════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS
+   ══════════════════════════════════════════════════════ */
+@media(max-width:640px){
+  .bk-header h1{font-size:1.9rem}
+  .bk-card{padding:.9rem 1rem}
+  .quiz-question-text{font-size:.88rem}
+  .quiz-option{font-size:.83rem;padding:7px 10px}
+  .bk-pill{font-size:.72rem;padding:4px 10px}
+  .doc-meta{gap:10px}
+  .score-badge{font-size:.75rem}
+  .fc-front{font-size:.85rem}
+  .fc-back{font-size:.78rem}
+  [data-testid="stSidebar"]{padding:0 .5rem}
+}
+@media(max-width:400px){
+  .bk-header h1{font-size:1.6rem}
+  .bk-card{padding:.75rem}
+  .quiz-question-text{font-size:.85rem;line-height:1.65}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -150,6 +212,67 @@ st.markdown("""
   border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.8rem;color:#f87171}
 .quota-dot{display:inline-block;width:8px;height:8px;border-radius:50%;
   margin-right:5px;vertical-align:middle}
+
+/* ══════════════════════════════════════════════════════
+   QUIZ RENDERING — zero height constraints, full wrapping
+   ══════════════════════════════════════════════════════ */
+.quiz-question-text{
+  color:#e6edf3;font-size:.95rem;line-height:1.75;
+  margin-bottom:1.1rem;
+  word-wrap:break-word;overflow-wrap:break-word;
+  white-space:normal;hyphens:auto;max-width:100%}
+.quiz-option{
+  background:#161b22;border:1px solid #30363d;border-radius:7px;
+  padding:8px 12px;margin-bottom:6px;font-size:.88rem;color:#c9d1d9;
+  word-wrap:break-word;overflow-wrap:break-word;white-space:normal;
+  cursor:pointer;transition:border-color .15s}
+.quiz-option:hover{border-color:#3fb950}
+.quiz-option.correct{border-color:#3fb950;background:rgba(46,160,67,.12);color:#7ee787}
+.quiz-option.wrong{border-color:#f85149;background:rgba(248,81,73,.08);color:#f87171}
+.quiz-option.neutral{border-color:#484f57;color:#8b949e}
+.quiz-expl{font-size:.82rem;color:#8b949e;line-height:1.65;margin-top:.85rem;
+  padding:.75rem 1rem;background:#0d1117;border-radius:6px;
+  border-left:2px solid #3fb950;
+  word-wrap:break-word;overflow-wrap:break-word}
+/* Remove all Streamlit overflow clipping on expanders */
+[data-testid="stExpander"]{overflow:visible!important}
+[data-testid="stExpander"]>div{overflow:visible!important;max-width:100%!important}
+/* Radio label: force wrapping */
+.stRadio>div>label{
+  word-wrap:break-word!important;overflow-wrap:break-word!important;
+  white-space:normal!important;line-height:1.6!important;
+  padding:6px 0!important;cursor:pointer!important}
+.stRadio>div{gap:.35rem!important}
+/* All cards: no hidden overflow, auto height */
+.bk-card,.coverage-card{
+  overflow:visible!important;height:auto!important;max-height:none!important}
+/* Flashcard text: full wrapping */
+.fc-front,.fc-back{
+  word-wrap:break-word!important;overflow-wrap:break-word!important;
+  white-space:normal!important;width:100%}
+/* Show-more toggle */
+.show-more-text{color:#3fb950;font-size:.8rem;cursor:pointer;
+  font-family:'DM Sans',sans-serif}
+/* ══════════════════════════════════════════════════════
+   MOBILE RESPONSIVENESS
+   ══════════════════════════════════════════════════════ */
+@media(max-width:640px){
+  .bk-header h1{font-size:1.9rem}
+  .bk-card{padding:.9rem 1rem}
+  .quiz-question-text{font-size:.88rem}
+  .quiz-option{font-size:.83rem;padding:7px 10px}
+  .bk-pill{font-size:.72rem;padding:4px 10px}
+  .doc-meta{gap:10px}
+  .score-badge{font-size:.75rem}
+  .fc-front{font-size:.85rem}
+  .fc-back{font-size:.78rem}
+  [data-testid="stSidebar"]{padding:0 .5rem}
+}
+@media(max-width:400px){
+  .bk-header h1{font-size:1.6rem}
+  .bk-card{padding:.75rem}
+  .quiz-question-text{font-size:.85rem;line-height:1.65}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -260,8 +383,72 @@ def _coverage_report(report: list, content_type: str) -> None:
         unsafe_allow_html=True)
 
 
+def _render_question_text(text: str, q_key: str) -> None:
+    """
+    Render question text with full word-wrap and optional Show-more for very long questions.
+    Never clips, never truncates silently. Questions >700 chars get a collapsible section.
+    """
+    MAX_PREVIEW = 700
+    exp_key = f"qexp_{q_key}"
+
+    if len(text) <= MAX_PREVIEW:
+        st.markdown(
+            f'<div class="quiz-question-text">{text}</div>',
+            unsafe_allow_html=True)
+        return
+
+    is_expanded = st.session_state.get(exp_key, False)
+    if is_expanded:
+        st.markdown(
+            f'<div class="quiz-question-text">{text}</div>',
+            unsafe_allow_html=True)
+        if st.button("\u25b2 Show less", key=f"qless_{q_key}", type="secondary"):
+            st.session_state[exp_key] = False
+            st.rerun()
+    else:
+        preview = text[:MAX_PREVIEW].rsplit(" ", 1)[0] + "\u2026"
+        st.markdown(
+            f'<div class="quiz-question-text">{preview}</div>',
+            unsafe_allow_html=True)
+        if st.button("\u25bc Show full question", key=f"qmore_{q_key}"):
+            st.session_state[exp_key] = True
+            st.rerun()
+
+
+def _render_answered_options(options: list, given: str, correct: str) -> None:
+    """
+    Render answered MCQ options as styled HTML rows instead of disabled radio.
+    Avoids Streamlit radio truncation and clearly shows correct / wrong / neutral.
+    """
+    html = ""
+    for opt in options:
+        letter = opt[0] if opt else ""
+        if letter == correct:
+            css = "quiz-option correct"
+            prefix = "\u2705 "
+        elif letter == given and letter != correct:
+            css = "quiz-option wrong"
+            prefix = "\u274c "
+        else:
+            css = "quiz-option neutral"
+            prefix = "   "
+        # word-wrap is in the CSS class; no inline truncation possible
+        html += f'<div class="{css}">{prefix}{opt}</div>'
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def _render_quiz_mode(doc_text: str, d_hash: str, long_doc: bool):
-    """Full Quiz mode rendering with coverage controls and chunked generation."""
+    """
+    Full Quiz mode rendering.
+
+    Rendering architecture:
+    - Expander header: Q-number + icon + short title (max 55 chars)
+    - Inside expander: full question text via _render_question_text()
+      (never truncated, grows vertically, Show-more for >700 chars)
+    - Options: st.radio for unanswered, custom HTML for answered
+      (custom HTML prevents Streamlit radio from compressing long options)
+    - No columns around question content — full width at all times
+    """
     selected = _coverage_selector("quiz", doc_text)
     diff     = st.select_slider("Difficulty", ["Easy", "Medium", "Hard"], value="Medium",
                                 key=f"diff_{d_hash[:6]}")
@@ -275,21 +462,19 @@ def _render_quiz_mode(doc_text: str, d_hash: str, long_doc: bool):
         with st.container():
             questions, report = ai.generate_quiz(d_hash, doc_text, selected, diff)
         if questions:
-            st.session_state[state.QUIZ_DATA]      = questions
-            st.session_state[state.QUIZ_ANSWERS]   = {}
-            st.session_state[state.QUIZ_COVERAGE]  = report
-            st.session_state[state.QUIZZES_TAKEN]  = (
+            st.session_state[state.QUIZ_DATA]     = questions
+            st.session_state[state.QUIZ_ANSWERS]  = {}
+            st.session_state[state.QUIZ_COVERAGE] = report
+            st.session_state[state.QUIZZES_TAKEN] = (
                 st.session_state.get(state.QUIZZES_TAKEN, 0) + 1)
             st.toast(f"{len(questions)} questions ready!", icon="\U0001f4dd")
             st.rerun()
         else:
             st.error("Generation failed. Try a smaller coverage mode or paste shorter text.")
 
-    # Coverage report
     if quiz_cover:
         _coverage_report(quiz_cover, "quiz")
 
-    # Quiz display
     if quiz_data:
         total    = len(quiz_data)
         answered = len(quiz_answers)
@@ -312,25 +497,44 @@ def _render_quiz_mode(doc_text: str, d_hash: str, long_doc: bool):
                                file_name="bookiee_quiz.md", mime="text/markdown")
 
         for i, q in enumerate(quiz_data):
-            done  = i in quiz_answers
-            given = quiz_answers.get(i, "")
-            ans   = q.get("answer", "")
+            done     = i in quiz_answers
+            given    = quiz_answers.get(i, "")
+            ans      = q.get("answer", "")
+            q_text   = q.get("question", "")
+            options  = q.get("options", [])
+            expl     = q.get("explanation", "")
+
             icon  = "\u2705" if done and given == ans else ("\u274c" if done else "\u25cb")
-            with st.expander(f"{icon}  Q{i+1}. {q.get('question','')[:75]}",
-                             expanded=not done):
-                chosen = st.radio("", q.get("options", []),
-                                  key=f"qr_{i}_{d_hash}",
-                                  label_visibility="collapsed")
+            # Expander header is intentionally SHORT — prevents header clipping.
+            # Full question always visible INSIDE the expander.
+            short = q_text[:55] + "\u2026" if len(q_text) > 55 else q_text
+            q_key = f"{i}_{d_hash[:6]}"
+
+            with st.expander(f"{icon}  Q{i+1}. {short}", expanded=not done):
+
+                # Full question text — word-wraps, grows vertically, Show-more if huge
+                _render_question_text(q_text, q_key)
+
                 if not done:
-                    if st.button("Submit", key=f"qs_{i}_{d_hash}"):
+                    # Native radio for interaction — CSS targets .stRadio label for wrapping
+                    chosen = st.radio("", options,
+                                      key=f"qr_{i}_{d_hash}",
+                                      label_visibility="collapsed")
+                    if st.button("Submit answer", key=f"qs_{i}_{d_hash}",
+                                 use_container_width=True):
                         st.session_state[state.QUIZ_ANSWERS][i] = (chosen or " ")[0]
                         st.rerun()
                 else:
+                    # Custom HTML option rendering — no Streamlit radio width compression
+                    _render_answered_options(options, given, ans)
                     if given == ans:
-                        st.success(f"Correct! Answer: **{ans}**")
+                        st.success(f"Correct! The answer is **{ans}**")
                     else:
-                        st.error(f"You chose **{given}** \u00b7 Correct: **{ans}**")
-                    st.caption(q.get("explanation", ""))
+                        st.error(f"You chose **{given}** \u00b7 Correct answer: **{ans}**")
+                    if expl:
+                        st.markdown(
+                            f'<div class="quiz-expl"><strong>Explanation:</strong> {expl}</div>',
+                            unsafe_allow_html=True)
 
 
 def _render_flashcard_mode(doc_text: str, d_hash: str, long_doc: bool):
@@ -395,7 +599,7 @@ def _render_flashcard_mode(doc_text: str, d_hash: str, long_doc: bool):
 # ══════════════════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("### \U0001f4da Bookiee AI")
-    st.caption(f"Just a prototype. \nThe main app build is in progress!")
+    st.caption(f"v{APP_VERSION}  \u00b7  Gemini 2.5 Flash")
     st.divider()
 
     # -- Demo
@@ -478,11 +682,12 @@ with st.sidebar:
         st.markdown("""
 1. **Upload** PDF / .txt / .md or paste text
 2. **Analyze** \u2192 summary, key points, concepts  
+   *(1 API call \u2014 was 3)*
 3. **Chat** \u2192 ask anything; long docs use smart section matching
 4. **Study** \u2192 quiz, flashcards, simplified explanation
 
-All results are **cached** for 2 hours, zero redundant calls.
-Long docs are **processed** and synthesized automatically.
+All results are **cached** for 2 hours \u2014 zero redundant calls.
+Long docs are **chunked** and synthesized automatically.
         """)
     with st.expander("AI diagnostics"):
         ai.render_diagnostics()
@@ -494,7 +699,7 @@ Long docs are **processed** and synthesized automatically.
 st.markdown("""
 <div class="bk-header">
   <h1>\U0001f4da Bookiee AI</h1>
-  <p>Upload any document \u2192 understand it deeply \u00b7 crush your exams.</p>
+  <p>Upload any document \u2192 understand it deeply \u00b7 study it fast.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -528,10 +733,10 @@ with tab1:
                 sum_ph = st.empty()
 
                 if long_doc:
-                    prog.progress(5, "Processing document...")
+                    prog.progress(5, "Chunking document...")
                     sections = ai.get_section_summaries(d_hash, doc_text)
 
-                    prog.progress(60, "Preparing summary...")
+                    prog.progress(60, "Synthesizing summary...")
                     full_summary = ""
                     for chunk in ai.stream_call(
                         prompts.synthesize_summary(sections), feature="summary"
@@ -545,10 +750,10 @@ with tab1:
 
                     prog.progress(80, "Extracting points and concepts...")
                     pc = ai.get_points_and_concepts(
-                        d_hash, "\n\n".join(sections)[:chu.MAX_CHARS])
+                        d_hash, "\n\n".join(sections)[:MAX_CHARS])
 
                 else:
-                    ctx = doc_text[:chu.MAX_CHARS]
+                    ctx = _clean_ctx(doc_text)[:chu.MAX_CHARS]
 
                     prog.progress(10, "Generating summary...")
                     full_summary = ""
@@ -726,7 +931,7 @@ with tab2:
                 st.session_state.get(state.QS_ASKED, 0) + 1
             )
 
-            ctx = chu.smart_chat_ctx(doc_text, user_input)
+            ctx = chu.smart_chat_ctx(_clean_ctx(doc_text), user_input)
             with st.chat_message("assistant", avatar="\U0001f4da"):
                 answer = st.write_stream(ai.answer_question(ctx, user_input))
 
@@ -810,6 +1015,6 @@ with tab3:
 st.divider()
 st.markdown(
     f"<p style='text-align:center;font-size:.75rem;color:#484f57'>"
-    f"Bookiee AI Prototype \u00b7 App build in progres \n + Powered by CelesTium (Next Gen AI Infrastructure Company)\n \u00b7 "
-    "View Gabriel's GitHub? <a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
-    unsafe_allow_html=True) 
+    f"Bookiee AI v{APP_VERSION} \u00b7 Streamlit + Gemini 2.5 Flash \u00b7 "
+    "<a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
+    unsafe_allow_html=True)
