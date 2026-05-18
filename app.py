@@ -685,7 +685,7 @@ with st.sidebar:
 3. **Chat** \u2192 ask anything; long docs use smart section matching
 4. **Study** \u2192 quiz, flashcards, simplified explanation
 
-All results are **cached** for 2 hours \u2014 zero redundant calls.
+All results are **cached** for 2 hours; zero redundant calls.
 Long docs are **chunked** and synthesized automatically.
         """)
     with st.expander("AI diagnostics"):
@@ -732,10 +732,10 @@ with tab1:
                 sum_ph = st.empty()
 
                 if long_doc:
-                    prog.progress(5, "Chunking document...")
+                    prog.progress(5, "Processing document...")
                     sections = ai.get_section_summaries(d_hash, doc_text)
 
-                    prog.progress(60, "Synthesizing summary...")
+                    prog.progress(60, "Preparing summary...")
                     full_summary = ""
                     for chunk in ai.stream_call(
                         prompts.synthesize_summary(sections), feature="summary"
@@ -1014,6 +1014,6 @@ with tab3:
 st.divider()
 st.markdown(
     f"<p style='text-align:center;font-size:.75rem;color:#484f57'>"
-    f"Bookiee AI v{APP_VERSION} \u00b7 Streamlit + Gemini 2.5 Flash \u00b7 "
-    "<a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
+    f"Bookiee AI v{APP_VERSION} \u00b7 Streamlit + LLM \u00b7 "
+    f"Gabriel's <a href='https://github.com' style='color:#3fb950;text-decoration:none'>GitHub</a></p>",
     unsafe_allow_html=True)
